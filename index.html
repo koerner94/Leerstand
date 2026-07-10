@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Leerstand">
+<meta name="theme-color" content="#1F3864">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<title>Leerstandskontrolle</title>
+<style>
+  :root{
+    --accent:#1F3864; --accent-light:#D9E2F3; --grey:#F2F2F2;
+    --ok:#2e7d32; --bad:#c62828; --na:#757575;
+    --radius:12px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{margin:0; font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif; background:#eef1f6; color:#1a1a1a; font-size:16px;}
+  header{position:sticky; top:0; z-index:10; background:var(--accent); color:#fff; padding:14px 16px; padding-top:calc(14px + env(safe-area-inset-top)); display:flex; align-items:center; gap:10px; box-shadow:0 2px 6px rgba(0,0,0,.2);}
+  header h1{font-size:17px; margin:0; flex:1; font-weight:600; line-height:1.25;}
+  header button{background:rgba(255,255,255,.15); border:none; color:#fff; font-size:15px; padding:8px 12px; border-radius:8px;}
+  main{padding:14px; max-width:640px; margin:0 auto; padding-bottom:calc(90px + env(safe-area-inset-bottom));}
+  .card{background:#fff; border-radius:var(--radius); box-shadow:0 1px 4px rgba(0,0,0,.08); margin-bottom:12px; overflow:hidden;}
+  .card .body{padding:14px;}
+  details.card summary{list-style:none; cursor:pointer; padding:14px; font-weight:700; color:var(--accent); display:flex; align-items:center; gap:8px; user-select:none;}
+  details.card summary::-webkit-details-marker{display:none;}
+  details.card summary .chev{margin-left:auto; transition:transform .2s; color:#999;}
+  details[open] summary .chev{transform:rotate(90deg);}
+  details.card summary .badge{font-size:12px; font-weight:600; color:#fff; background:#b0b8c9; border-radius:10px; padding:2px 8px;}
+  details.card summary .badge.done{background:var(--ok);}
+  .grouphead{background:var(--accent-light); color:var(--accent); font-weight:700; font-size:14px; padding:8px 14px;}
+  .item{padding:12px 14px; border-top:1px solid #eee;}
+  .item .q{font-size:15px; margin-bottom:8px;}
+  .seg{display:flex; gap:6px; margin-bottom:8px;}
+  .seg button{flex:1; padding:10px 4px; font-size:15px; border:1.5px solid #ccc; background:#fff; border-radius:8px; color:#444;}
+  .seg button.sel-ja{background:var(--ok); border-color:var(--ok); color:#fff; font-weight:700;}
+  .seg button.sel-nein{background:var(--bad); border-color:var(--bad); color:#fff; font-weight:700;}
+  .seg button.sel-na{background:var(--na); border-color:var(--na); color:#fff; font-weight:700;}
+  input[type=text], input[type=date], textarea{width:100%; padding:10px; font-size:16px; border:1.5px solid #ccc; border-radius:8px; background:#fff;}
+  input:focus, textarea:focus{outline:none; border-color:var(--accent);}
+  label.fl{display:block; font-size:13px; font-weight:600; color:#555; margin:10px 0 4px;}
+  .row2{display:flex; gap:10px;}
+  .row2>div{flex:1;}
+  .fab{position:fixed; bottom:calc(18px + env(safe-area-inset-bottom)); left:0; right:0; display:flex; justify-content:center; gap:10px; padding:0 16px; z-index:9;}
+  .fab button{flex:1; max-width:300px; padding:15px; font-size:16px; font-weight:700; border:none; border-radius:14px; box-shadow:0 3px 10px rgba(0,0,0,.25);}
+  .btn-primary{background:var(--accent); color:#fff;}
+  .btn-mail{background:var(--ok); color:#fff;}
+  .plist .entry{display:flex; align-items:center; gap:12px; padding:14px; border-top:1px solid #eee;}
+  .plist .entry:first-child{border-top:none;}
+  .plist .info{flex:1; min-width:0;}
+  .plist .title{font-weight:700; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .plist .sub{font-size:13px; color:#777; margin-top:2px;}
+  .plist .prog{font-size:12px; font-weight:700; color:#fff; background:#b0b8c9; padding:3px 9px; border-radius:10px; flex-shrink:0;}
+  .plist .prog.done{background:var(--ok);}
+  .plist .del{background:none; border:none; color:#c62828; font-size:20px; padding:8px; flex-shrink:0;}
+  .empty{text-align:center; color:#888; padding:40px 20px; font-size:15px;}
+  .hint{font-size:12.5px; color:#888; text-align:center; margin:10px 0;}
+  .toast{position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:#333; color:#fff; padding:10px 18px; border-radius:20px; font-size:14px; opacity:0; transition:opacity .3s; pointer-events:none; z-index:20;}
+  .toast.show{opacity:1;}
+  textarea{min-height:80px; resize:vertical;}
+</style>
+</head>
+<body>
+<header>
+  <button id="btnBack" style="display:none">&#8592;</button>
+  <h1 id="hTitle">Leerstandskontrolle</h1>
+</header>
+<main id="main"></main>
+<div class="fab" id="fab"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+
+'use strict';
+/* ================= Konfiguration ================= */
+const SICHERHEIT = [
+  {id:'fenster',    label:'Alle Fenster und Türen verschlossen?'},
+  {id:'vandalismus',label:'Anzeichen von Vandalismus / unbefugtem Zutritt?'},
+  {id:'geruch',     label:'Geruchsbild unauffällig? (muffig / Schimmelgefahr?)'},
+  {id:'briefkasten',label:'Briefkasten geleert?'},
+];
+const ZAEHLER = [
+  {id:'strom',      label:'Strom'},
+  {id:'gas',        label:'Gas'},
+  {id:'wasserkalt', label:'Wasser (kalt)'},
+  {id:'wasserwarm', label:'Wasser (warm)'},
+  {id:'heizung',    label:'Heizung (Zentralablesung)'},
+];
+const GEWERKE = [
+  {name:'Heizung / Lüftung', items:[
+    {id:'frostschutz', label:'Frostschutzstellung an allen Heizkörpern aktiv?'},
+    {id:'thermostate', label:'Thermostatventile gängig (nicht festsitzend)?'},
+    {id:'anlagedicht', label:'Anlage / Heizkörper dicht (keine Leckagen)?'},
+  ]},
+  {name:'Sanitär (Bad / Küche)', items:[
+    {id:'siphons',   label:'Siphons mit Wasser gefüllt? (sonst Wasser laufen lassen)'},
+    {id:'leitungen', label:'Leitungen und Armaturen dicht?'},
+    {id:'spuelung',  label:'WC-Spülung intakt?'},
+  ]},
+  {name:'Elektro', items:[
+    {id:'sicherungen',label:'Sicherungen in korrekter Stellung (nach Vorgabe ein/aus)?'},
+    {id:'bauschutz',  label:'Bauschutzfassungen / Blindabdeckungen vorhanden?'},
+  ]},
+  {name:'Bausubstanz', items:[
+    {id:'feuchte',  label:'Keine Feuchtigkeitsschäden an Decken / Wänden / Böden?'},
+    {id:'tapeten',  label:'Zustand Tapeten / Bodenbeläge in Ordnung?'},
+    {id:'abfluesse',label:'Balkon- / Terrassenabflüsse frei?'},
+  ]},
+];
+const MASSNAHMEN = [
+  {id:'reinigung',    label:'Reinigung'},
+  {id:'reparatur',    label:'Reparatur'},
+  {id:'schloss',      label:'Schlosstausch'},
+  {id:'ablesung',     label:'Zählerablesung'},
+  {id:'sonstig1',     label:'Sonstiges 1', free:true},
+  {id:'sonstig2',     label:'Sonstiges 2', free:true},
+];
+// alle Status-Felder (für Fortschritt)
+const STATUS_KEYS = [
+  ...SICHERHEIT.map(i=>'sich_'+i.id+'_status'),
+  ...GEWERKE.flatMap(g=>g.items.map(i=>'zust_'+i.id+'_status')),
+];
+
+/* ================= Speicher ================= */
+const LS_KEY = 'leerstand_protokolle_v1';
+const store = (function(){
+  try{
+    const t='__test__'; localStorage.setItem(t,t); localStorage.removeItem(t);
+    return localStorage;
+  }catch(e){
+    const mem={};
+    return { getItem:k=>(k in mem?mem[k]:null), setItem:(k,v)=>{mem[k]=String(v);}, removeItem:k=>{delete mem[k];}, _memory:true };
+  }
+})();
+function loadAll(){ try{ return JSON.parse(store.getItem(LS_KEY)) || []; }catch(e){ return []; } }
+function saveAll(list){ try{ store.setItem(LS_KEY, JSON.stringify(list)); }catch(e){} }
+function newProtokoll(){
+  return { id: Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+           created: new Date().toISOString(), values: { datum: new Date().toISOString().slice(0,10) } };
+}
+
+/* ================= App-Zustand ================= */
+let current = null;   // aktuelles Protokoll (Objekt-Referenz in Liste)
+let view = 'home';
+const $  = s => document.querySelector(s);
+const el = (tag, attrs={}, html='') => { const e=document.createElement(tag);
+  for(const [k,v] of Object.entries(attrs)) e.setAttribute(k,v); e.innerHTML=html; return e; };
+
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),1800); }
+
+function progress(p){
+  const done = STATUS_KEYS.filter(k=>p.values[k]).length;
+  return Math.round(100*done/STATUS_KEYS.length);
+}
+function fmtDate(iso){ if(!iso) return ''; const [y,m,d]=iso.split('-'); return d+'.'+m+'.'+y; }
+
+/* ================= Startseite ================= */
+function renderHome(){
+  view='home'; current=null;
+  $('#hTitle').textContent='Leerstandskontrolle';
+  $('#btnBack').style.display='none';
+  const main=$('#main'); main.innerHTML='';
+  const list=loadAll().sort((a,b)=>(b.values.datum||'').localeCompare(a.values.datum||''));
+
+  const card=el('div',{class:'card plist'});
+  if(!list.length){
+    card.appendChild(el('div',{class:'empty'},'Noch keine Begehungen.<br>Tippe unten auf „Neue Begehung“.'));
+  }
+  for(const p of list){
+    const pr=progress(p);
+    const entry=el('div',{class:'entry'});
+    const info=el('div',{class:'info'});
+    info.appendChild(el('div',{class:'title'},
+      (p.values.adresse||'Ohne Adresse') + (p.values.wohnung?(' · '+p.values.wohnung):'')));
+    info.appendChild(el('div',{class:'sub'},'Begehung: '+(fmtDate(p.values.datum)||'–')
+      +(p.values.pruefer?(' · '+p.values.pruefer):'')));
+    info.onclick=()=>openProtokoll(p.id);
+    const prog=el('span',{class:'prog'+(pr===100?' done':'')},pr+'%');
+    const del=el('button',{class:'del','aria-label':'Löschen'},'&#128465;');
+    del.onclick=(ev)=>{ ev.stopPropagation();
+      if(confirm('Diese Begehung wirklich löschen?')){
+        saveAll(loadAll().filter(x=>x.id!==p.id)); renderHome(); } };
+    entry.append(info,prog,del); card.appendChild(entry);
+  }
+  main.appendChild(card);
+  main.appendChild(el('p',{class:'hint'}, store._memory
+    ? '&#9888;&#65039; Vorschau-Modus: Daten gehen beim Schließen verloren. App über den Home-Bildschirm öffnen, dann wird dauerhaft gespeichert.'
+    : 'Alle Daten werden lokal auf diesem Gerät gespeichert.'));
+
+  const fab=$('#fab'); fab.innerHTML='';
+  const b=el('button',{class:'btn-primary'},'+ Neue Begehung');
+  b.onclick=()=>{ const p=newProtokoll(); const all=loadAll(); all.push(p); saveAll(all); openProtokoll(p.id); };
+  fab.appendChild(b);
+}
+
+/* ================= Formular ================= */
+function openProtokoll(id){
+  const all=loadAll(); current=all.find(p=>p.id===id); if(!current){renderHome();return;}
+  view='form';
+  $('#hTitle').textContent=current.values.adresse||'Neue Begehung';
+  $('#btnBack').style.display='';
+  const main=$('#main'); main.innerHTML='';
+
+  main.appendChild(sectionCard('1. Stammdaten', bodyStammdaten(), true));
+  main.appendChild(sectionCard('2. Eindruck & Sicherheit', bodyChecks('sich_', SICHERHEIT), true));
+  main.appendChild(sectionCard('3. Zählerstände', bodyZaehler()));
+  main.appendChild(sectionCard('4. Zustandskontrolle', bodyZustand()));
+  main.appendChild(sectionCard('5. Maßnahmen / To-Do', bodyMassnahmen()));
+  main.appendChild(sectionCard('6. Abschluss', bodyAbschluss()));
+
+  const fab=$('#fab'); fab.innerHTML='';
+  const bm=el('button',{class:'btn-mail'},'&#128196; PDF per E-Mail senden');
+  bm.onclick=sendMail; fab.appendChild(bm);
+  updateBadges();
+  window.scrollTo(0,0);
+}
+
+function sectionCard(title, body, open){
+  const d=el('details',{class:'card'}); if(open) d.setAttribute('open','');
+  const s=el('summary',{}, title+' <span class="badge" data-sec></span><span class="chev">&#9654;</span>');
+  d.appendChild(s); d.appendChild(body); return d;
+}
+
+function inputRow(label, key, type='text', placeholder=''){
+  const wrap=el('div');
+  wrap.appendChild(el('label',{class:'fl'},label));
+  const inp=el('input',{type:type, 'data-k':key, placeholder:placeholder});
+  inp.value=current.values[key]||'';
+  wrap.appendChild(inp); return wrap;
+}
+
+function bodyStammdaten(){
+  const b=el('div',{class:'body'});
+  const r1=el('div',{class:'row2'});
+  r1.append(inputRow('Datum der Kontrolle','datum','date'), inputRow('Prüfer (Name)','pruefer'));
+  b.appendChild(r1);
+  b.appendChild(inputRow('Objektanschrift','adresse','text','Straße Nr., PLZ Ort'));
+  b.appendChild(inputRow('Wohnungs-Nr. / Lage','wohnung','text','z. B. WE 03, 1. OG links'));
+  const r2=el('div',{class:'row2'});
+  r2.append(inputRow('Leerstand seit','leerseit','date'), inputRow('Vorauss. Neuvermietung','neuverm','date'));
+  b.appendChild(r2);
+  return b;
+}
+
+function segButtons(key){
+  const seg=el('div',{class:'seg'});
+  for(const [v,txt] of [['ja','Ja'],['nein','Nein'],['na','N/A']]){
+    const btn=el('button',{type:'button','data-k':key,'data-v':v},txt);
+    if(current.values[key]===v) btn.classList.add('sel-'+v);
+    btn.onclick=()=>{
+      current.values[key] = current.values[key]===v ? '' : v;
+      seg.querySelectorAll('button').forEach(x=>x.className='');
+      if(current.values[key]) btn.classList.add('sel-'+v);
+      persist(); updateBadges();
+    };
+    seg.appendChild(btn);
+  }
+  return seg;
+}
+
+function checkItem(prefix, item){
+  const d=el('div',{class:'item'});
+  d.appendChild(el('div',{class:'q'},item.label));
+  d.appendChild(segButtons(prefix+item.id+'_status'));
+  const bem=el('input',{type:'text','data-k':prefix+item.id+'_bem',placeholder:'Bemerkung …'});
+  bem.value=current.values[prefix+item.id+'_bem']||'';
+  d.appendChild(bem); return d;
+}
+
+function bodyChecks(prefix, items){
+  const b=el('div');
+  for(const it of items) b.appendChild(checkItem(prefix,it));
+  return b;
+}
+
+function bodyZaehler(){
+  const b=el('div');
+  for(const z of ZAEHLER){
+    const d=el('div',{class:'item'});
+    d.appendChild(el('div',{class:'q'},'<b>'+z.label+'</b>'));
+    const r=el('div',{class:'row2'});
+    const n=el('div'), s=el('div');
+    const inpN=el('input',{type:'text','data-k':'z_'+z.id+'_nr',placeholder:'Zählernummer'});
+    inpN.value=current.values['z_'+z.id+'_nr']||'';
+    const inpS=el('input',{type:'text',inputmode:'decimal','data-k':'z_'+z.id+'_stand',placeholder:'Zählerstand'});
+    inpS.value=current.values['z_'+z.id+'_stand']||'';
+    n.appendChild(inpN); s.appendChild(inpS); r.append(n,s); d.appendChild(r);
+    b.appendChild(d);
+  }
+  return b;
+}
+
+function bodyZustand(){
+  const b=el('div');
+  for(const g of GEWERKE){
+    b.appendChild(el('div',{class:'grouphead'},g.name));
+    for(const it of g.items) b.appendChild(checkItem('zust_',it));
+  }
+  return b;
+}
+
+function bodyMassnahmen(){
+  const b=el('div');
+  for(const m of MASSNAHMEN){
+    const d=el('div',{class:'item'});
+    if(m.free){
+      const inpG=el('input',{type:'text','data-k':'m_'+m.id+'_gewerk',placeholder:'Weiteres Gewerk / Mangel …'});
+      inpG.value=current.values['m_'+m.id+'_gewerk']||'';
+      d.appendChild(inpG); d.appendChild(el('div',{style:'height:8px'}));
+    } else {
+      d.appendChild(el('div',{class:'q'},'<b>'+m.label+'</b>'));
+    }
+    const seg=el('div',{class:'seg'});
+    for(const [v,txt] of [['ja','Beauftragung: Ja'],['nein','Nein']]){
+      const key='m_'+m.id+'_beauf';
+      const btn=el('button',{type:'button'},txt);
+      if(current.values[key]===v) btn.classList.add(v==='ja'?'sel-nein':'sel-na'); // Ja = rot (Handlungsbedarf)
+      btn.onclick=()=>{
+        current.values[key]=current.values[key]===v?'':v;
+        seg.querySelectorAll('button').forEach(x=>x.className='');
+        if(current.values[key]===v) btn.classList.add(v==='ja'?'sel-nein':'sel-na');
+        persist();
+      };
+      seg.appendChild(btn);
+    }
+    d.appendChild(seg);
+    const r=el('div',{class:'row2'});
+    const c1=el('div'), c2=el('div');
+    c1.appendChild(el('label',{class:'fl'},'Erledigt bis'));
+    const inpD=el('input',{type:'date','data-k':'m_'+m.id+'_bis'});
+    inpD.value=current.values['m_'+m.id+'_bis']||'';
+    c1.appendChild(inpD);
+    c2.appendChild(el('label',{class:'fl'},'Bemerkung'));
+    const inpB=el('input',{type:'text','data-k':'m_'+m.id+'_bem',placeholder:'…'});
+    inpB.value=current.values['m_'+m.id+'_bem']||'';
+    c2.appendChild(inpB);
+    r.append(c1,c2); d.appendChild(r);
+    b.appendChild(d);
+  }
+  return b;
+}
+
+function bodyAbschluss(){
+  const b=el('div',{class:'body'});
+  b.appendChild(el('label',{class:'fl'},'Sonstige Bemerkungen'));
+  const ta=el('textarea',{'data-k':'bemerkungen',placeholder:'…'});
+  ta.value=current.values.bemerkungen||'';
+  b.appendChild(ta);
+  b.appendChild(inputRow('Ort','ort'));
+  b.appendChild(el('p',{class:'hint'},'Die Unterschrift erfolgt auf dem Ausdruck bzw. die E-Mail gilt als Prüfvermerk.'));
+  return b;
+}
+
+/* ================= Speichern ================= */
+let saveTimer=null;
+function persist(){
+  if(!current) return;
+  current.updated=new Date().toISOString();
+  const all=loadAll(); const i=all.findIndex(p=>p.id===current.id);
+  if(i>=0) all[i]=current; else all.push(current);
+  saveAll(all);
+}
+document.addEventListener('input', e=>{
+  const k=e.target.getAttribute && e.target.getAttribute('data-k');
+  if(!k || !current) return;
+  current.values[k]=e.target.value;
+  if(k==='adresse') $('#hTitle').textContent=e.target.value||'Neue Begehung';
+  clearTimeout(saveTimer); saveTimer=setTimeout(persist,300);
+});
+
+function updateBadges(){
+  if(view!=='form') return;
+  document.querySelectorAll('details.card').forEach(d=>{
+    const badge=d.querySelector('[data-sec]'); if(!badge) return;
+    const segsKeys=[...d.querySelectorAll('.seg button[data-k]')].map(b=>b.getAttribute('data-k'));
+    const uniq=[...new Set(segsKeys)];
+    if(!uniq.length){ badge.style.display='none'; return; }
+    const done=uniq.filter(k=>current.values[k]).length;
+    badge.textContent=done+'/'+uniq.length;
+    badge.classList.toggle('done',done===uniq.length);
+  });
+}
+
+/* ================= PDF-Erzeugung (eigener Mini-Generator, offline) ================= */
+const PDF_W=595.28, PDF_H=841.89;
+const HW={' ':278,'!':278,'"':355,'#':556,'$':556,'%':889,'&':667,"'":191,'(':333,')':333,'*':389,'+':584,',':278,'-':333,'.':278,'/':278,'0':556,'1':556,'2':556,'3':556,'4':556,'5':556,'6':556,'7':556,'8':556,'9':556,':':278,';':278,'<':584,'=':584,'>':584,'?':556,'@':1015,'A':667,'B':667,'C':722,'D':722,'E':667,'F':611,'G':778,'H':722,'I':278,'J':500,'K':667,'L':556,'M':833,'N':722,'O':778,'P':667,'Q':778,'R':722,'S':667,'T':611,'U':722,'V':667,'W':944,'X':667,'Y':667,'Z':611,'[':278,'\\':278,']':278,'_':556,'a':556,'b':556,'c':500,'d':556,'e':556,'f':278,'g':556,'h':556,'i':222,'j':222,'k':500,'l':222,'m':833,'n':556,'o':556,'p':556,'q':556,'r':333,'s':500,'t':278,'u':556,'v':500,'w':722,'x':500,'y':500,'z':500,'{':334,'|':260,'}':334,'~':584};
+const UML={'ä':'a','ö':'o','ü':'u','Ä':'A','Ö':'O','Ü':'U','ß':'s','é':'e','è':'e','á':'a','à':'a','·':'.','°':'o'};
+function chW(c){ if(HW[c]!=null) return HW[c]; if(UML[c]!=null) return HW[UML[c]]||556; return 556; }
+function twd(s,size,bold){ let w=0; for(const c of String(s)) w+=chW(c); return w/1000*size*(bold?1.10:1.06); }
+function wrapTxt(s,size,bold,maxw){
+  const out=[];
+  for(const para of String(s==null?'':s).split(/\n/)){
+    const words=para.split(/\s+/).filter(x=>x!==''); let cur='';
+    if(!words.length){ out.push(''); continue; }
+    for(const w of words){
+      const t=cur?cur+' '+w:w;
+      if(twd(t,size,bold)<=maxw || !cur) cur=t; else { out.push(cur); cur=w; }
+    }
+    if(cur) out.push(cur);
+  }
+  return out.length?out:[''];
+}
+function winAnsi(s){
+  return String(s).replace(/[‘’]/g,"'").replace(/[“„”]/g,'"')
+    .replace(/–|—/g,'-').replace(/•/g,'-').replace(/€/g,'EUR')
+    .replace(/[^\x00-\xFF]/g,'?');
+}
+function pdfEsc(s){ return winAnsi(s).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)'); }
+function hexCol(h){ const n=parseInt(h,16); return [((n>>16)&255)/255,((n>>8)&255)/255,(n&255)/255].map(x=>+x.toFixed(3)); }
+const C_ACC=hexCol('1F3864'), C_SHADE=hexCol('D9E2F3'), C_GREY=hexCol('F2F2F2'), C_LINE=hexCol('999999'), C_TXT=[0,0,0], C_MUT=hexCol('595959'), C_WHITE=[1,1,1];
+
+function PdfDoc(){ this.pages=[]; this.cur=null; this.newPage(); }
+PdfDoc.prototype.newPage=function(){ this.cur=[]; this.pages.push(this.cur); };
+PdfDoc.prototype.text=function(x,yBase,str,size,o){ o=o||{};
+  const f=o.bold?'F2':(o.italic?'F3':'F1'); const c=o.color||C_TXT;
+  this.cur.push('BT /'+f+' '+size+' Tf '+c.join(' ')+' rg 1 0 0 1 '+x.toFixed(2)+' '+(PDF_H-yBase).toFixed(2)+' Tm ('+pdfEsc(str)+') Tj ET'); };
+PdfDoc.prototype.rect=function(x,yTop,w,h,o){ o=o||{};
+  let s='';
+  if(o.fill) s+=o.fill.join(' ')+' rg ';
+  if(o.stroke) s+=o.stroke.join(' ')+' RG '+(o.lw||0.7)+' w ';
+  s+=x.toFixed(2)+' '+(PDF_H-yTop-h).toFixed(2)+' '+w.toFixed(2)+' '+h.toFixed(2)+' re ';
+  s+=(o.fill&&o.stroke)?'B':(o.fill?'f':'S');
+  this.cur.push(s); };
+PdfDoc.prototype.line=function(x1,y1,x2,y2,color,lw){
+  this.cur.push((color||C_LINE).join(' ')+' RG '+(lw||0.7)+' w '+x1.toFixed(2)+' '+(PDF_H-y1).toFixed(2)+' m '+x2.toFixed(2)+' '+(PDF_H-y2).toFixed(2)+' l S'); };
+PdfDoc.prototype.bytes=function(){
+  const objs=[]; const n=this.pages.length;
+  const kids=[]; let next=6; const pageObjs=[];
+  for(let i=0;i<n;i++){ kids.push(next+' 0 R'); pageObjs.push([next,next+1]); next+=2; }
+  objs[1]='<< /Type /Catalog /Pages 2 0 R >>';
+  objs[2]='<< /Type /Pages /Count '+n+' /Kids ['+kids.join(' ')+'] >>';
+  objs[3]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+  objs[4]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+  objs[5]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>';
+  this.pages.forEach((ops,i)=>{
+    const po=pageObjs[i][0], co=pageObjs[i][1];
+    objs[po]='<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+PDF_W+' '+PDF_H+'] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents '+co+' 0 R >>';
+    objs[co]={stream:ops.join('\n')};
+  });
+  let out='%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+  const offs=[];
+  for(let i=1;i<objs.length;i++){
+    offs[i]=out.length;
+    if(typeof objs[i]==='string') out+=i+' 0 obj\n'+objs[i]+'\nendobj\n';
+    else out+=i+' 0 obj\n<< /Length '+objs[i].stream.length+' >>\nstream\n'+objs[i].stream+'\nendstream\nendobj\n';
+  }
+  const xref=out.length;
+  out+='xref\n0 '+objs.length+'\n0000000000 65535 f \n';
+  for(let i=1;i<objs.length;i++) out+=String(offs[i]).padStart(10,'0')+' 00000 n \n';
+  out+='trailer\n<< /Size '+objs.length+' /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF';
+  const u8=new Uint8Array(out.length);
+  for(let i=0;i<out.length;i++) u8[i]=out.charCodeAt(i)&255;
+  return u8;
+};
+
+function buildPdfBytes(v){
+  const M=40, CW=PDF_W-2*M;
+  const doc=new PdfDoc();
+  let y=M+8;
+  const BOTTOM=PDF_H-50;
+  function ensure(h){ if(y+h>BOTTOM){ doc.newPage(); y=M+8; } }
+  function secHead(t){ ensure(46); y+=14; doc.text(M,y,t,11,{bold:true,color:C_ACC}); y+=4; doc.line(M,y,M+CW,y,C_ACC,1); y+=4; }
+  function cellBg(x,yt,w,h,fill){ doc.rect(x,yt,w,h,{fill:fill,stroke:C_LINE,lw:0.6}); }
+  function cell(x,yt,w,h){ doc.rect(x,yt,w,h,{stroke:C_LINE,lw:0.6}); }
+
+  const title='LEERSTANDSKONTROLLE - BEGEHUNGSPROTOKOLL';
+  doc.text(M+(CW-twd(title,14,true))/2,y+6,title,14,{bold:true,color:C_ACC}); y+=20;
+  const sub='Turnusmäßige Objektbegehung leerstehender Wohneinheiten';
+  doc.text(M+(CW-twd(sub,8.5,false))/2,y,sub,8.5,{italic:true,color:C_MUT}); y+=6;
+
+  secHead('1.  Stammdaten');
+  const sd=[['Datum der Kontrolle:',fmtDate(v.datum),'Prüfer (Name):',v.pruefer],
+            ['Objektanschrift:',v.adresse,'Wohnungs-Nr. / Lage:',v.wohnung],
+            ['Leerstand seit:',fmtDate(v.leerseit),'Vorauss. Neuvermietung:',fmtDate(v.neuverm)]];
+  const wL=110,wV=147.5;
+  for(const row of sd){
+    ensure(20);
+    let x=M;
+    for(let i=0;i<4;i++){
+      const w=(i%2===0)?wL:wV;
+      if(i%2===0){ cellBg(x,y,w,18,C_GREY); doc.text(x+4,y+12.5,row[i],8.5,{bold:true}); }
+      else { cell(x,y,w,18); doc.text(x+4,y+12.5,row[i]||'',9); }
+      x+=w;
+    }
+    y+=18;
+  }
+
+  const c1=225,c2=140,c3=CW-c1-c2;
+  function checkHead(){
+    ensure(20);
+    cellBg(M,y,c1,16,C_ACC); cellBg(M+c1,y,c2,16,C_ACC); cellBg(M+c1+c2,y,c3,16,C_ACC);
+    doc.text(M+4,y+11.5,'Prüfpunkt',8.5,{bold:true,color:C_WHITE});
+    doc.text(M+c1+4,y+11.5,'Bewertung',8.5,{bold:true,color:C_WHITE});
+    doc.text(M+c1+c2+4,y+11.5,'Bemerkung',8.5,{bold:true,color:C_WHITE});
+    y+=16;
+  }
+  function checkboxes(x,cy,status,opts){
+    let cx=x+4;
+    for(const opt of opts){
+      const val=opt[0], lab=opt[1];
+      const by=cy-7;
+      doc.rect(cx,by,8,8,{stroke:[0.2,0.2,0.2],lw:0.8});
+      if(status===val){
+        doc.line(cx+1.5,by+1.5,cx+6.5,by+6.5,C_ACC,1.1);
+        doc.line(cx+1.5,by+6.5,cx+6.5,by+1.5,C_ACC,1.1);
+      }
+      doc.text(cx+11,cy,lab,8.5,{bold:status===val});
+      cx+=11+twd(lab,8.5,true)+10;
+    }
+  }
+  function checkRow(label,status,bem){
+    const ll=wrapTxt(label,8.5,false,c1-8), bl=wrapTxt(bem||'',8.5,false,c3-8);
+    const rh=Math.max(18, ll.length*10+7, bl.length*10+7);
+    ensure(rh);
+    cell(M,y,c1,rh); cell(M+c1,y,c2,rh); cell(M+c1+c2,y,c3,rh);
+    ll.forEach((t,i)=>doc.text(M+4,y+11+i*10,t,8.5));
+    checkboxes(M+c1,y+11.8,status,[['ja','Ja'],['nein','Nein'],['na','N/A']]);
+    bl.forEach((t,i)=>doc.text(M+c1+c2+4,y+11+i*10,t,8.5));
+    y+=rh;
+  }
+  function groupRow(name){
+    ensure(34);
+    cellBg(M,y,CW,14,C_SHADE);
+    doc.text(M+4,y+10,name,8.5,{bold:true,color:C_ACC});
+    y+=14;
+  }
+
+  secHead('2.  Allgemeiner Eindruck & Sicherheit');
+  checkHead();
+  for(const it of SICHERHEIT) checkRow(it.label, v['sich_'+it.id+'_status'], v['sich_'+it.id+'_bem']);
+
+  secHead('3.  Zählerstände');
+  const z1=120,z2=140,z3=115,z4=CW-z1-z2-z3;
+  ensure(20);
+  (function(){ let x=M;
+    for(const hd of [['Medium',z1],['Zählernummer',z2],['Zählerstand',z3],['Bemerkung',z4]]){
+      cellBg(x,y,hd[1],16,C_ACC); doc.text(x+4,y+11.5,hd[0],8.5,{bold:true,color:C_WHITE}); x+=hd[1];
+    } })();
+  y+=16;
+  for(const z of ZAEHLER){
+    ensure(19);
+    cellBg(M,y,z1,17,C_GREY); doc.text(M+4,y+12,z.label,8.5,{bold:true});
+    cell(M+z1,y,z2,17); doc.text(M+z1+4,y+12,v['z_'+z.id+'_nr']||'',9);
+    cell(M+z1+z2,y,z3,17); doc.text(M+z1+z2+4,y+12,v['z_'+z.id+'_stand']||'',9);
+    cell(M+z1+z2+z3,y,z4,17);
+    y+=17;
+  }
+
+  secHead('4.  Zustandskontrolle nach Gewerken');
+  checkHead();
+  for(const g of GEWERKE){ groupRow(g.name); for(const it of g.items) checkRow(it.label, v['zust_'+it.id+'_status'], v['zust_'+it.id+'_bem']); }
+
+  secHead('5.  Notwendige Maßnahmen / To-Do-Liste');
+  const m1=225,m2=140,m3=CW-m1-m2;
+  ensure(20);
+  (function(){ let x=M;
+    for(const hd of [['Gewerk / Mangel',m1],['Beauftragung nötig?',m2],['Erledigt bis',m3]]){
+      cellBg(x,y,hd[1],16,C_ACC); doc.text(x+4,y+11.5,hd[0],8.5,{bold:true,color:C_WHITE}); x+=hd[1];
+    } })();
+  y+=16;
+  for(const m of MASSNAHMEN){
+    const name=m.free?(v['m_'+m.id+'_gewerk']||''):m.label;
+    if(m.free && !name && !v['m_'+m.id+'_beauf'] && !v['m_'+m.id+'_bem'] && !v['m_'+m.id+'_bis']) continue;
+    const nl=wrapTxt(name+(v['m_'+m.id+'_bem']?(' - '+v['m_'+m.id+'_bem']):''),8.5,false,m1-14);
+    const rh=Math.max(18,nl.length*10+7);
+    ensure(rh);
+    cell(M,y,m1,rh); cell(M+m1,y,m2,rh); cell(M+m1+m2,y,m3,rh);
+    nl.forEach((t,i)=>doc.text(M+4,y+11+i*10,t,8.5,{bold:(!m.free&&i===0)}));
+    checkboxes(M+m1,y+11.8,v['m_'+m.id+'_beauf'],[['ja','Ja'],['nein','Nein']]);
+    doc.text(M+m1+m2+4,y+11,fmtDate(v['m_'+m.id+'_bis'])||'',9);
+    y+=rh;
+  }
+
+  secHead('6.  Abschluss');
+  ensure(20);
+  doc.text(M,y+9,'Sonstige Bemerkungen:',9,{bold:true}); y+=14;
+  if(v.bemerkungen){
+    for(const t of wrapTxt(v.bemerkungen,9,false,CW-4)){ ensure(12); doc.text(M,y+9,t,9); y+=12; }
+  } else {
+    for(let i=0;i<3;i++){ ensure(16); y+=14; doc.line(M,y,M+CW,y,C_LINE,0.6); }
+  }
+  y+=34; ensure(50);
+  doc.text(M,y-4,(v.ort?v.ort+', ':'')+(fmtDate(v.datum)||''),9);
+  doc.line(M,y,M+200,y,[0,0,0],0.8);
+  doc.line(M+CW-200,y,M+CW,y,[0,0,0],0.8);
+  doc.text(M,y+9,'Ort, Datum',7.5,{color:C_MUT});
+  doc.text(M+CW-200,y+9,'Unterschrift Prüfer/in',7.5,{color:C_MUT});
+
+  const total=doc.pages.length;
+  doc.pages.forEach(function(ops,i){
+    const save=doc.cur; doc.cur=ops;
+    doc.text(M,PDF_H-26,'Leerstandskontrolle '+(v.adresse||'')+(v.wohnung?(' · '+v.wohnung):''),7.5,{color:C_MUT});
+    const pn='Seite '+(i+1)+' / '+total;
+    doc.text(M+CW-twd(pn,7.5,false),PDF_H-26,pn,7.5,{color:C_MUT});
+    doc.cur=save;
+  });
+  return doc.bytes();
+}
+
+/* ================= E-Mail-Export ================= */
+const STXT={ja:'Ja',nein:'Nein',na:'N/A','':'—'};
+function line(label,val){ return label+': '+(val||'—'); }
+function buildText(){
+  const v=current.values; const L=[];
+  L.push('LEERSTANDSKONTROLLE – BEGEHUNGSPROTOKOLL');
+  L.push('==========================================');
+  L.push('');
+  L.push('1. STAMMDATEN');
+  L.push(line('Datum der Kontrolle',fmtDate(v.datum)));
+  L.push(line('Prüfer',v.pruefer));
+  L.push(line('Objektanschrift',v.adresse));
+  L.push(line('Wohnung / Lage',v.wohnung));
+  L.push(line('Leerstand seit',fmtDate(v.leerseit)));
+  L.push(line('Vorauss. Neuvermietung',fmtDate(v.neuverm)));
+  L.push('');
+  L.push('2. EINDRUCK & SICHERHEIT');
+  for(const it of SICHERHEIT){
+    let s='- '+it.label+' '+STXT[v['sich_'+it.id+'_status']||''];
+    if(v['sich_'+it.id+'_bem']) s+=' ('+v['sich_'+it.id+'_bem']+')';
+    L.push(s);
+  }
+  L.push('');
+  L.push('3. ZÄHLERSTÄNDE');
+  for(const z of ZAEHLER){
+    L.push('- '+z.label+': Nr. '+(v['z_'+z.id+'_nr']||'—')+' | Stand: '+(v['z_'+z.id+'_stand']||'—'));
+  }
+  L.push('');
+  L.push('4. ZUSTANDSKONTROLLE');
+  for(const g of GEWERKE){
+    L.push('['+g.name+']');
+    for(const it of g.items){
+      let s='- '+it.label+' '+STXT[v['zust_'+it.id+'_status']||''];
+      if(v['zust_'+it.id+'_bem']) s+=' ('+v['zust_'+it.id+'_bem']+')';
+      L.push(s);
+    }
+  }
+  L.push('');
+  L.push('5. MASSNAHMEN / TO-DO');
+  let any=false;
+  for(const m of MASSNAHMEN){
+    const name=m.free?(v['m_'+m.id+'_gewerk']||''):m.label;
+    const beauf=v['m_'+m.id+'_beauf'];
+    if(m.free && !name) continue;
+    if(!beauf && !v['m_'+m.id+'_bem'] && !v['m_'+m.id+'_bis']) continue;
+    any=true;
+    let s='- '+name+': Beauftragung '+(beauf==='ja'?'JA':beauf==='nein'?'nein':'—');
+    if(v['m_'+m.id+'_bis']) s+=' | erledigt bis '+fmtDate(v['m_'+m.id+'_bis']);
+    if(v['m_'+m.id+'_bem']) s+=' | '+v['m_'+m.id+'_bem'];
+    L.push(s);
+  }
+  if(!any) L.push('- keine Maßnahmen erfasst');
+  L.push('');
+  L.push('6. ABSCHLUSS');
+  L.push(line('Sonstige Bemerkungen',v.bemerkungen));
+  L.push(line('Ort',v.ort));
+  L.push(line('Datum',fmtDate(v.datum)));
+  L.push(line('Prüfer',v.pruefer));
+  L.push('');
+  L.push('Erstellt mit der Leerstandskontroll-App am '+new Date().toLocaleDateString('de-DE'));
+  return L.join('\n');
+}
+function sendMail(){
+  persist();
+  const v=current.values;
+  const subject='Leerstandskontrolle '+(v.adresse||'')+(v.wohnung?(', '+v.wohnung):'')+' – '+(fmtDate(v.datum)||'');
+  let file=null;
+  try{
+    const bytes=buildPdfBytes(v);
+    const fname=('Leerstandskontrolle_'+(v.adresse||'Objekt')+'_'+(v.datum||'')).replace(/[^\wäöüÄÖÜß.-]+/g,'_')+'.pdf';
+    file=new File([bytes], fname, {type:'application/pdf'});
+  }catch(err){ mailtoText(subject); return; }
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    navigator.share({files:[file], title:subject, text:'Begehungsprotokoll im Anhang.'})
+      .catch(e=>{ if(e && e.name!=='AbortError') downloadFallback(file,subject); });
+  } else {
+    downloadFallback(file,subject);
+  }
+}
+function downloadFallback(file,subject){
+  try{
+    const url=URL.createObjectURL(file);
+    const a=document.createElement('a'); a.href=url; a.download=file.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('PDF gespeichert (Downloads) – bitte an die E-Mail anhängen');
+    setTimeout(()=>{ location.href='mailto:?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent('Begehungsprotokoll als PDF im Anhang.'); },900);
+  }catch(e){ mailtoText(subject); }
+}
+function mailtoText(subject){
+  const text=buildText();
+  const href='mailto:?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(text);
+  location.href = href.length>7500 ? 'mailto:?subject='+encodeURIComponent(subject) : href;
+}
+
+/* ================= Navigation ================= */
+$('#btnBack').onclick=()=>{ persist(); renderHome(); };
+renderHome();
+
+/* ================= PWA: Service Worker ================= */
+if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostname==='localhost')){
+  window.addEventListener('load',()=>{ navigator.serviceWorker.register('./sw.js').catch(()=>{}); });
+}
+</script>
+</body>
+</html>
