@@ -61,6 +61,11 @@
   .toast{position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:#333; color:#fff; padding:10px 18px; border-radius:20px; font-size:14px; opacity:0; transition:opacity .3s; pointer-events:none; z-index:20;}
   .toast.show{opacity:1;}
   textarea{min-height:80px; resize:vertical;}
+  .fotogrid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;}
+  .foto img{width:100%; border-radius:8px; display:block;}
+  .foto input{margin-top:6px; font-size:14px; padding:8px;}
+  .fotodel{background:none; border:none; color:#c62828; font-size:13px; padding:6px 0;}
+  .btn-add{width:100%; padding:12px; font-size:15px; font-weight:700; border:1.5px dashed var(--accent); background:#fff; color:var(--accent); border-radius:10px;}
 </style>
 </head>
 <body>
@@ -211,6 +216,7 @@ function openProtokoll(id){
   main.appendChild(sectionCard('4. Zustandskontrolle', bodyZustand()));
   main.appendChild(sectionCard('5. Maßnahmen / To-Do', bodyMassnahmen()));
   main.appendChild(sectionCard('6. Abschluss', bodyAbschluss()));
+  main.appendChild(sectionCard('7. Anhänge (Fotos)', bodyAnhaenge()));
 
   const fab=$('#fab'); fab.innerHTML='';
   const bm=el('button',{class:'btn-mail'},'&#128196; PDF per E-Mail senden');
@@ -355,6 +361,56 @@ function bodyAbschluss(){
   return b;
 }
 
+function bodyAnhaenge(){
+  const b=el('div',{class:'body'});
+  const grid=el('div',{class:'fotogrid'});
+  function redraw(){
+    grid.innerHTML='';
+    const fotos=current.values.fotos||[];
+    fotos.forEach((f,i)=>{
+      const card=el('div',{class:'foto'});
+      const img=el('img'); img.src=f.d; card.appendChild(img);
+      const cap=el('input',{type:'text',placeholder:'Beschreibung …'}); cap.value=f.c||'';
+      cap.oninput=()=>{ f.c=cap.value; clearTimeout(saveTimer); saveTimer=setTimeout(persist,300); };
+      card.appendChild(cap);
+      const del=el('button',{class:'fotodel',type:'button'},'&#128465; Entfernen');
+      del.onclick=()=>{ if(confirm('Foto entfernen?')){ fotos.splice(i,1); persist(); redraw(); } };
+      card.appendChild(del);
+      grid.appendChild(card);
+    });
+  }
+  redraw();
+  b.appendChild(grid);
+  const inp=el('input',{type:'file',accept:'image/*',multiple:'',style:'display:none'});
+  inp.onchange=()=>{ const files=Array.from(inp.files); inp.value=''; files.forEach(addFoto); };
+  const add=el('button',{type:'button',class:'btn-add'},'&#128247; Foto hinzufügen');
+  add.onclick=()=>inp.click();
+  function addFoto(file){
+    const rd=new FileReader();
+    rd.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        const maxDim=1000; let w=img.width,h=img.height;
+        const sc=Math.min(1,maxDim/Math.max(w,h)); w=Math.round(w*sc); h=Math.round(h*sc);
+        const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+        cv.getContext('2d').drawImage(img,0,0,w,h);
+        const d=cv.toDataURL('image/jpeg',0.72);
+        const fotos=current.values.fotos=(current.values.fotos||[]);
+        if(JSON.stringify(loadAll()).length+d.length>4500000){
+          toast('Speicher fast voll – Foto nicht hinzugefügt'); return;
+        }
+        fotos.push({d:d,w:w,h:h,c:''});
+        persist(); redraw();
+      };
+      img.src=rd.result;
+    };
+    rd.readAsDataURL(file);
+  }
+  b.appendChild(inp); b.appendChild(add);
+  b.appendChild(el('p',{class:'hint'},'Fotos werden verkleinert gespeichert und in das PDF eingebettet.'));
+  return b;
+}
+
 /* ================= Speichern ================= */
 let saveTimer=null;
 function persist(){
@@ -413,7 +469,7 @@ function pdfEsc(s){ return winAnsi(s).replace(/\\/g,'\\\\').replace(/\(/g,'\\(')
 function hexCol(h){ const n=parseInt(h,16); return [((n>>16)&255)/255,((n>>8)&255)/255,(n&255)/255].map(x=>+x.toFixed(3)); }
 const C_ACC=hexCol('1F3864'), C_SHADE=hexCol('D9E2F3'), C_GREY=hexCol('F2F2F2'), C_LINE=hexCol('999999'), C_TXT=[0,0,0], C_MUT=hexCol('595959'), C_WHITE=[1,1,1];
 
-function PdfDoc(){ this.pages=[]; this.cur=null; this.newPage(); }
+function PdfDoc(){ this.pages=[]; this.cur=null; this.images=[]; this.newPage(); }
 PdfDoc.prototype.newPage=function(){ this.cur=[]; this.pages.push(this.cur); };
 PdfDoc.prototype.text=function(x,yBase,str,size,o){ o=o||{};
   const f=o.bold?'F2':(o.italic?'F3':'F1'); const c=o.color||C_TXT;
@@ -425,20 +481,29 @@ PdfDoc.prototype.rect=function(x,yTop,w,h,o){ o=o||{};
   s+=x.toFixed(2)+' '+(PDF_H-yTop-h).toFixed(2)+' '+w.toFixed(2)+' '+h.toFixed(2)+' re ';
   s+=(o.fill&&o.stroke)?'B':(o.fill?'f':'S');
   this.cur.push(s); };
+PdfDoc.prototype.addImage=function(bin,w,h){ this.images.push({bin:bin,w:w,h:h}); return 'Im'+this.images.length; };
+PdfDoc.prototype.image=function(x,yTop,w,h,name){
+  this.cur.push('q '+w.toFixed(2)+' 0 0 '+h.toFixed(2)+' '+x.toFixed(2)+' '+(PDF_H-yTop-h).toFixed(2)+' cm /'+name+' Do Q'); };
 PdfDoc.prototype.line=function(x1,y1,x2,y2,color,lw){
   this.cur.push((color||C_LINE).join(' ')+' RG '+(lw||0.7)+' w '+x1.toFixed(2)+' '+(PDF_H-y1).toFixed(2)+' m '+x2.toFixed(2)+' '+(PDF_H-y2).toFixed(2)+' l S'); };
 PdfDoc.prototype.bytes=function(){
-  const objs=[]; const n=this.pages.length;
-  const kids=[]; let next=6; const pageObjs=[];
-  for(let i=0;i<n;i++){ kids.push(next+' 0 R'); pageObjs.push([next,next+1]); next+=2; }
+  const objs=[]; const n=this.pages.length; const k=this.images.length;
+  const imgFirst=6, pageFirst=6+k;
+  const kids=[]; const pageObjs=[];
+  for(let i=0;i<n;i++){ kids.push((pageFirst+2*i)+' 0 R'); pageObjs.push([pageFirst+2*i,pageFirst+2*i+1]); }
   objs[1]='<< /Type /Catalog /Pages 2 0 R >>';
   objs[2]='<< /Type /Pages /Count '+n+' /Kids ['+kids.join(' ')+'] >>';
   objs[3]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
   objs[4]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
   objs[5]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>';
+  this.images.forEach((im,i)=>{
+    objs[imgFirst+i]={dict:'/Type /XObject /Subtype /Image /Width '+im.w+' /Height '+im.h+' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode', stream:im.bin};
+  });
+  let xo='';
+  if(k){ xo=' /XObject <<'; for(let i=0;i<k;i++) xo+=' /Im'+(i+1)+' '+(imgFirst+i)+' 0 R'; xo+=' >>'; }
   this.pages.forEach((ops,i)=>{
     const po=pageObjs[i][0], co=pageObjs[i][1];
-    objs[po]='<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+PDF_W+' '+PDF_H+'] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents '+co+' 0 R >>';
+    objs[po]='<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+PDF_W+' '+PDF_H+'] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >>'+xo+' >> /Contents '+co+' 0 R >>';
     objs[co]={stream:ops.join('\n')};
   });
   let out='%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
@@ -446,7 +511,7 @@ PdfDoc.prototype.bytes=function(){
   for(let i=1;i<objs.length;i++){
     offs[i]=out.length;
     if(typeof objs[i]==='string') out+=i+' 0 obj\n'+objs[i]+'\nendobj\n';
-    else out+=i+' 0 obj\n<< /Length '+objs[i].stream.length+' >>\nstream\n'+objs[i].stream+'\nendstream\nendobj\n';
+    else out+=i+' 0 obj\n<< '+(objs[i].dict?objs[i].dict+' ':'')+'/Length '+objs[i].stream.length+' >>\nstream\n'+objs[i].stream+'\nendstream\nendobj\n';
   }
   const xref=out.length;
   out+='xref\n0 '+objs.length+'\n0000000000 65535 f \n';
@@ -590,6 +655,30 @@ function buildPdfBytes(v){
   doc.text(M,y+9,'Ort, Datum',7.5,{color:C_MUT});
   doc.text(M+CW-200,y+9,'Unterschrift Prüfer/in',7.5,{color:C_MUT});
 
+  const fotos=(v.fotos||[]);
+  if(fotos.length){
+    y+=18;
+    const imgNames=fotos.map(f=>doc.addImage(atob(String(f.d).split(',')[1]),f.w,f.h));
+    secHead('7.  Anhänge / Fotos');
+    const gap=15, gw=(CW-gap)/2;
+    for(let i=0;i<fotos.length;i+=2){
+      const pair=[fotos[i],fotos[i+1]].filter(Boolean);
+      const dims=pair.map(f=>{ let iw=gw, ih=iw*f.h/f.w; if(ih>240){ ih=240; iw=ih*f.w/f.h; } return {iw:iw,ih:ih}; });
+      const caps=pair.map((f,j)=>wrapTxt('Foto '+(i+j+1)+(f.c?(' - '+f.c):''),8.5,false,gw));
+      let cellH=0;
+      pair.forEach((f,j)=>{ cellH=Math.max(cellH, dims[j].ih+6+caps[j].length*10); });
+      cellH+=12;
+      ensure(cellH);
+      pair.forEach((f,j)=>{
+        const x=M+j*(gw+gap);
+        doc.image(x,y,dims[j].iw,dims[j].ih,imgNames[i+j]);
+        doc.rect(x,y,dims[j].iw,dims[j].ih,{stroke:C_LINE,lw:0.6});
+        caps[j].forEach((t,li)=>doc.text(x,y+dims[j].ih+12+li*10,t,8.5,{color:C_MUT}));
+      });
+      y+=cellH;
+    }
+  }
+
   const total=doc.pages.length;
   doc.pages.forEach(function(ops,i){
     const save=doc.cur; doc.cur=ops;
@@ -659,6 +748,11 @@ function buildText(){
   L.push(line('Ort',v.ort));
   L.push(line('Datum',fmtDate(v.datum)));
   L.push(line('Prüfer',v.pruefer));
+  if((v.fotos||[]).length){
+    L.push('');
+    L.push('7. ANHÄNGE');
+    L.push('- '+v.fotos.length+' Foto(s), siehe PDF-Anhang');
+  }
   L.push('');
   L.push('Erstellt mit der Leerstandskontroll-App am '+new Date().toLocaleDateString('de-DE'));
   return L.join('\n');
