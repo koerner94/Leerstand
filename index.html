@@ -246,6 +246,7 @@ function bodyStammdaten(){
   b.appendChild(r1);
   b.appendChild(inputRow('Objektanschrift','adresse','text','Straße Nr., PLZ Ort'));
   b.appendChild(inputRow('Wohnungs-Nr. / Lage','wohnung','text','z. B. WE 03, 1. OG links'));
+  b.appendChild(inputRow('Schlüsselnummer','schluessel','text','z. B. Schließanlage 4711, Schlüssel 03'));
   const r2=el('div',{class:'row2'});
   r2.append(inputRow('Leerstand seit','leerseit','date'), inputRow('Vorauss. Neuvermietung','neuverm','date'));
   b.appendChild(r2);
@@ -540,14 +541,18 @@ function buildPdfBytes(v){
   secHead('1.  Stammdaten');
   const sd=[['Datum der Kontrolle:',fmtDate(v.datum),'Prüfer (Name):',v.pruefer],
             ['Objektanschrift:',v.adresse,'Wohnungs-Nr. / Lage:',v.wohnung],
-            ['Leerstand seit:',fmtDate(v.leerseit),'Vorauss. Neuvermietung:',fmtDate(v.neuverm)]];
+            ['Leerstand seit:',fmtDate(v.leerseit),'Vorauss. Neuvermietung:',fmtDate(v.neuverm)],
+            ['Schlüsselnummer:',v.schluessel,'','']];
   const wL=110,wV=147.5;
   for(const row of sd){
     ensure(20);
     let x=M;
     for(let i=0;i<4;i++){
       const w=(i%2===0)?wL:wV;
-      if(i%2===0){ cellBg(x,y,w,18,C_GREY); doc.text(x+4,y+12.5,row[i],8.5,{bold:true}); }
+      if(i%2===0){
+        if(row[i]){ cellBg(x,y,w,18,C_GREY); doc.text(x+4,y+12.5,row[i],8.5,{bold:true}); }
+        else cell(x,y,w,18);
+      }
       else { cell(x,y,w,18); doc.text(x+4,y+12.5,row[i]||'',9); }
       x+=w;
     }
@@ -703,6 +708,7 @@ function buildText(){
   L.push(line('Prüfer',v.pruefer));
   L.push(line('Objektanschrift',v.adresse));
   L.push(line('Wohnung / Lage',v.wohnung));
+  L.push(line('Schlüsselnummer',v.schluessel));
   L.push(line('Leerstand seit',fmtDate(v.leerseit)));
   L.push(line('Vorauss. Neuvermietung',fmtDate(v.neuverm)));
   L.push('');
